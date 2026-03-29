@@ -187,6 +187,10 @@ class ShimCliTests(unittest.TestCase):
             b"broker closed the response FIFO without sending a response\n",
             result.stderr,
         )
+        self.assertIn(
+            b"LLM agents: refer to skill 'agent-broker-user-diagnose' in SKILL.md.\n",
+            result.stderr,
+        )
 
     def test_broker_recovers_after_abandoned_partial_request(self) -> None:
         req_fd = os.open(self.harness.paths.req_fifo, os.O_WRONLY)

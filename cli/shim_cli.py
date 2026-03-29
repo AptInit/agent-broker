@@ -14,6 +14,9 @@ if str(REPO_ROOT) not in sys.path:
 from agent_broker_v1.shim import BrokerShim, make_missing_session_env_error
 
 
+TROUBLESHOOTING_SKILL = "agent-broker-user-diagnose"
+
+
 def is_direct_cli_invocation(invoked_as: str) -> bool:
     name = Path(invoked_as).name
     return name in {"shim_cli.py", "shim_cli"}
@@ -23,7 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Broker shim CLI. Normally invoke via a symlink named after the tool "
-            "you want to request."
+            "you want to request. If brokered execution behaves unexpectedly, "
+            f"refer to the {TROUBLESHOOTING_SKILL!r} skill in SKILL.md."
         )
     )
     parser.add_argument(
@@ -42,6 +46,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Arguments to forward to the requested tool",
     )
     return parser
+
+
+def emit_troubleshooting_hint() -> None:
+    sys.stderr.buffer.write(
+        (
+            f"LLM agents: refer to skill {TROUBLESHOOTING_SKILL!r} in SKILL.md.\n"
+        ).encode("utf-8")
+    )
+    sys.stderr.buffer.flush()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             if not stderr:
                 sys.stderr.buffer.write((detail + "\n").encode("utf-8", errors="replace"))
                 sys.stderr.buffer.flush()
+        emit_troubleshooting_hint()
         return int(response.get("exit_code") or 1)
 
     return int(response.get("exit_code") or 0)

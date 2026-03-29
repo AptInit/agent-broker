@@ -120,6 +120,24 @@ The current implementation is intended for non-interactive commands. It does not
 
 If `BROKER_SESSION_DIR` is unset, or the broker has already removed the session files, the shim exits cleanly with a broker-unavailable style error instead of crashing.
 
+## Generating the Agent Skill
+
+This repo does not commit `SKILL.md`. Instead, a human can generate a local diagnostic skill and hand it to LLM agent users when they need help understanding that some apparent CLI tools are actually brokered.
+
+Generate the skill from the current broker config:
+
+```bash
+python3 scripts/generate_skill.py
+```
+
+That writes a local `SKILL.md` in the repo root using the current allowlist from `agent_broker_v1/config.py`. Because the generated skill is derived from config, regenerate it after changing the allowlist.
+
+The intended flow is:
+
+- the human running this repo generates `SKILL.md`
+- the human gives that generated skill to LLM agent users
+- the agent uses that skill when brokered CLI behavior needs diagnosis
+
 ## Repo Layout
 
 - `agent_broker_v1/`
@@ -128,6 +146,8 @@ If `BROKER_SESSION_DIR` is unset, or the broker has already removed the session 
   User-facing CLI entrypoints.
 - `experiments/`
   Transport and sandbox experiments kept for reference.
+- `scripts/`
+  Local utilities, including `generate_skill.py` for producing the uncommitted diagnostic skill from config.
 
 ## Notes
 
