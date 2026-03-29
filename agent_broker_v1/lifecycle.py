@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 
 from agent_broker_v1.broker import Broker, ToolSpec
-from agent_broker_v1.broker_config import BROKER_CFG_V1
+from agent_broker_v1.config import BROKER_CFG_V1
 from agent_broker_v1.session import SessionPaths
 
 

@@ -27,8 +27,8 @@ The v1 design is intentionally narrow:
   Host-side serving layer. Reads requests from the FIFO pair, validates them, executes tools from a supplied allowlist, and writes responses.
 - `agent_broker_v1.lifecycle`
   Host-side bootstrap, allowlist, and cleanup layer. Creates or reuses the session directory, builds the runtime allowlist from config, creates shim symlinks for the allowed tools, prints manual bootstrap directions, handles shutdown, and removes session IPC files on exit.
-- `agent_broker_v1.broker_config`
-  Static broker configuration. Currently holds `BROKER_CFG_V1`, including the configured tool allowlist.
+- `agent_broker_v1.config`
+  Centralized broker configuration. Currently holds `BROKER_CFG_V1`, including the configured tool allowlist.
 - `agent_broker_v1.session`
   Session path model shared by broker and shim.
 - `agent_broker_v1.shim`
@@ -63,7 +63,7 @@ The broker:
 
 - creates a fresh session directory under `/tmp` by default
 - prints the session directory path
-- prints the effective runtime allowlist resolved from broker config
+- prints the effective runtime allowlist resolved from central config
 - creates shim symlinks under `bin/` for the allowlisted tools
 - prints example client-side commands that use one-shot environment assignments
 - serves until interrupted
@@ -111,7 +111,7 @@ If `BROKER_SESSION_DIR` is unset, or the broker has already removed the session 
 ## Repo Layout
 
 - `agent_broker_v1/`
-  Package code for broker, lifecycle, broker config, protocol, session handling, and shim library.
+  Package code for broker, lifecycle, central config, protocol, session handling, and shim library.
 - `cli/`
   User-facing CLI entrypoints.
 - `experiments/`
