@@ -106,6 +106,7 @@ python3 /path/to/repo/cli/shim_cli.py --tool echo -- hello-from-shim
 - in symlink-invoked mode, infers the tool from its symlink name and forwards all arguments untouched
 - in direct invocation mode, supports `--tool` and `--timeout-ms`
 - writes brokered stdout/stderr back to the local process as raw bytes and forwards the exit code
+- emits a `SKILL.md` troubleshooting hint on structured broker-side failures
 
 Transport notes:
 

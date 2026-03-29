@@ -192,6 +192,20 @@ class ShimCliTests(unittest.TestCase):
             result.stderr,
         )
 
+    def test_shim_does_not_emit_troubleshooting_hint_for_silent_nonzero_exit(self) -> None:
+        result = self.run_shim(
+            "--tool",
+            "python3",
+            "--",
+            "-c",
+            "raise SystemExit(3)",
+            timeout=5,
+        )
+
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(result.stdout, b"")
+        self.assertEqual(result.stderr, b"")
+
     def test_broker_recovers_after_abandoned_partial_request(self) -> None:
         req_fd = os.open(self.harness.paths.req_fifo, os.O_WRONLY)
         try:
