@@ -19,7 +19,8 @@ The v1 design is intentionally narrow:
 - one broker instance serves one client session
 - one session directory contains one FIFO pair, one lock file, and one generated shim-bin directory
 - one request/response transaction is in flight per session
-- the sandboxed shim serializes access with blocking `flock`
+- the sandboxed shim holds a blocking `flock` across the full request/response exchange
+- the current command path is intended for non-interactive commands
 
 ### Components
 
@@ -101,10 +102,21 @@ python3 /path/to/repo/cli/shim_cli.py --tool echo -- hello-from-shim
 
 - reads `BROKER_SESSION_DIR`
 - derives the FIFO and lock paths from the session directory
-- takes a blocking `flock` on `client.lock`
+- takes a blocking `flock` on `client.lock` for the full transaction
 - in symlink-invoked mode, infers the tool from its symlink name and forwards all arguments untouched
 - in direct invocation mode, supports `--tool` and `--timeout-ms`
-- forwards stdout, stderr, and exit code from the broker response
+- writes brokered stdout/stderr back to the local process as raw bytes and forwards the exit code
+
+Transport notes:
+
+- request and response messages are newline-delimited base64-encoded JSON
+- large responses may be written to the FIFO in multiple raw slices, but they still form one logical newline-terminated response message
+- successful responses carry `stdout_b64` and `stderr_b64` fields, which are base64 encodings of the raw tool output bytes
+- the client ignores stale complete responses whose request id does not match the active request
+- the client fails on malformed or structurally unexpected response frames
+- the broker attempts to recover from abandoned or malformed client-side request traffic and continue serving later requests
+
+The current implementation is intended for non-interactive commands. It does not currently transport stdin to brokered tools or preserve interactive signal behavior for foreground terminal use.
 
 If `BROKER_SESSION_DIR` is unset, or the broker has already removed the session files, the shim exits cleanly with a broker-unavailable style error instead of crashing.
 

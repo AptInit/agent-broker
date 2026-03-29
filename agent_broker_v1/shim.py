@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 
 from agent_broker_v1.protocol import (
+    PROTOCOL_VERSION,
+    decode_blob,
     decode_message,
     encode_message,
     make_error_response,
@@ -54,11 +56,16 @@ class BrokerShim:
         try:
             with self.paths.client_lock.open("r+", encoding="utf-8") as lock_file:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-                with self.paths.req_fifo.open("w", encoding="utf-8") as req_file:
-                    req_file.write(encode_message(request))
-                    req_file.flush()
-                with self.paths.resp_fifo.open("r", encoding="utf-8") as resp_file:
-                    response_line = resp_file.readline()
+                resp_fd = os.open(self.paths.resp_fifo, os.O_RDONLY)
+                try:
+                    req_fd = os.open(self.paths.req_fifo, os.O_WRONLY)
+                    try:
+                        self._write_all(req_fd, encode_message(request))
+                    finally:
+                        os.close(req_fd)
+                    response = self._read_response(resp_fd, request_id=request["id"])
+                finally:
+                    os.close(resp_fd)
         except FileNotFoundError as exc:
             return make_error_response(
                 request["id"],
@@ -74,23 +81,7 @@ class BrokerShim:
                 exit_code=70,
             )
 
-        if not response_line:
-            return make_error_response(
-                request["id"],
-                code="BROKER_UNAVAILABLE",
-                detail="broker closed the response FIFO without sending a response",
-                exit_code=69,
-            )
-
-        try:
-            return decode_message(response_line)
-        except Exception as exc:
-            return make_error_response(
-                request["id"],
-                code="BAD_RESPONSE",
-                detail=str(exc),
-                exit_code=70,
-            )
+        return response
 
     def run_from_process(
         self,
@@ -110,6 +101,99 @@ class BrokerShim:
             timeout_ms=timeout_ms,
             env_delta=env_delta,
         )
+
+    def _write_all(self, fd: int, data: bytes) -> None:
+        view = memoryview(data)
+        while view:
+            try:
+                written = os.write(fd, view)
+            except InterruptedError:
+                continue
+            if written <= 0:
+                raise OSError("short write to broker transport")
+            view = view[written:]
+
+    def _read_response(self, resp_fd: int, *, request_id: str) -> dict:
+        read_buffer = b""
+        while True:
+            while b"\n" not in read_buffer:
+                try:
+                    chunk = os.read(resp_fd, 4096)
+                except InterruptedError:
+                    continue
+                if not chunk:
+                    return make_error_response(
+                        request_id,
+                        code="BROKER_UNAVAILABLE",
+                        detail="broker closed the response FIFO without sending a response",
+                        exit_code=69,
+                    )
+                read_buffer += chunk
+
+            response_line, read_buffer = read_buffer.split(b"\n", 1)
+            response_line = response_line.strip()
+            if not response_line:
+                continue
+
+            try:
+                response = decode_message(response_line)
+            except Exception as exc:
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail=str(exc),
+                    exit_code=70,
+                )
+
+            if not isinstance(response, dict):
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail="response must decode to an object",
+                    exit_code=70,
+                )
+
+            if response.get("version") != PROTOCOL_VERSION:
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail=f"expected response version {PROTOCOL_VERSION}",
+                    exit_code=70,
+                )
+
+            response_id = response.get("id")
+            if response_id is None:
+                continue
+            if response_id != request_id:
+                continue
+            if not isinstance(response_id, str):
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail="response id must be a string",
+                    exit_code=70,
+                )
+
+            if response.get("kind") != "result":
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail="unexpected response kind",
+                    exit_code=70,
+                )
+
+            try:
+                response["stdout"] = decode_blob(response.get("stdout_b64", ""))
+                response["stderr"] = decode_blob(response.get("stderr_b64", ""))
+            except ValueError as exc:
+                return make_error_response(
+                    request_id,
+                    code="BAD_RESPONSE",
+                    detail=str(exc),
+                    exit_code=70,
+                )
+
+            return response
 
 
 def infer_tool_name(invoked_as: str) -> str:

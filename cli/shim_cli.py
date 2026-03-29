@@ -74,22 +74,22 @@ def main(argv: list[str] | None = None) -> int:
             tool_override=tool_override,
         )
 
-    stdout = response.get("stdout", "")
-    stderr = response.get("stderr", "")
+    stdout = response.get("stdout", b"")
+    stderr = response.get("stderr", b"")
     if stdout:
-        sys.stdout.write(stdout)
-        sys.stdout.flush()
+        sys.stdout.buffer.write(stdout)
+        sys.stdout.buffer.flush()
     if stderr:
-        sys.stderr.write(stderr)
-        sys.stderr.flush()
+        sys.stderr.buffer.write(stderr)
+        sys.stderr.buffer.flush()
 
     if not response.get("ok", False):
         error = response.get("error", {})
         detail = error.get("detail")
         if detail:
             if not stderr:
-                sys.stderr.write(detail + "\n")
-                sys.stderr.flush()
+                sys.stderr.buffer.write((detail + "\n").encode("utf-8", errors="replace"))
+                sys.stderr.buffer.flush()
         return int(response.get("exit_code") or 1)
 
     return int(response.get("exit_code") or 0)

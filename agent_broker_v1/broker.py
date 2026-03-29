@@ -9,7 +9,9 @@ from typing import Any
 
 from agent_broker_v1.protocol import (
     PROTOCOL_VERSION,
+    TRANSPORT_CHUNK_SIZE,
     decode_message,
+    encode_blob,
     encode_message,
     make_error_response,
 )
@@ -27,8 +29,8 @@ class Broker:
         self.allowed_tools = allowed_tools
 
     def serve_until(self, stop_event: threading.Event) -> None:
-        req_fd = os.open(self.paths.req_fifo, os.O_RDWR | os.O_NONBLOCK)
-        resp_fd = os.open(self.paths.resp_fifo, os.O_RDWR)
+        req_fd = self._open_request_fifo()
+        resp_fd = self._open_response_fifo()
         read_buffer = b""
         try:
             while not stop_event.is_set():
@@ -37,20 +39,50 @@ class Broker:
                     continue
                 chunk = os.read(req_fd, 4096)
                 if not chunk:
+                    read_buffer = b""
+                    os.close(req_fd)
+                    req_fd = self._open_request_fifo()
                     continue
                 read_buffer += chunk
                 while b"\n" in read_buffer:
                     raw_line, read_buffer = read_buffer.split(b"\n", 1)
-                    line = raw_line.decode("utf-8").strip()
+                    line = raw_line.strip()
                     if not line:
                         continue
                     response = self._handle_line(line)
-                    os.write(resp_fd, encode_message(response).encode("utf-8"))
+                    self._send_response(resp_fd, response)
         finally:
             os.close(req_fd)
             os.close(resp_fd)
 
-    def _handle_line(self, line: str) -> dict[str, Any]:
+    def _open_request_fifo(self) -> int:
+        return os.open(self.paths.req_fifo, os.O_RDONLY | os.O_NONBLOCK)
+
+    def _open_response_fifo(self) -> int:
+        resp_fd = os.open(self.paths.resp_fifo, os.O_RDWR | os.O_NONBLOCK)
+        os.set_blocking(resp_fd, True)
+        return resp_fd
+
+    def _send_response(self, resp_fd: int, response: dict[str, Any]) -> None:
+        encoded_response = encode_message(response)
+        for offset in range(0, len(encoded_response), TRANSPORT_CHUNK_SIZE):
+            self._write_all(
+                resp_fd,
+                encoded_response[offset : offset + TRANSPORT_CHUNK_SIZE],
+            )
+
+    def _write_all(self, fd: int, data: bytes) -> None:
+        view = memoryview(data)
+        while view:
+            try:
+                written = os.write(fd, view)
+            except InterruptedError:
+                continue
+            if written <= 0:
+                raise OSError("short write to shim transport")
+            view = view[written:]
+
+    def _handle_line(self, line: bytes) -> dict[str, Any]:
         try:
             request = decode_message(line)
         except Exception as exc:
@@ -137,7 +169,6 @@ class Broker:
                 command,
                 cwd=workdir,
                 env=env,
-                text=True,
                 capture_output=True,
                 timeout=timeout_ms / 1000.0,
                 check=False,
@@ -166,16 +197,17 @@ class Broker:
 
         stdout_log = self.paths.logs_dir / f"{request_id}.stdout.log"
         stderr_log = self.paths.logs_dir / f"{request_id}.stderr.log"
-        stdout_log.write_text(result.stdout, encoding="utf-8")
-        stderr_log.write_text(result.stderr, encoding="utf-8")
+        stdout_log.write_bytes(result.stdout)
+        stderr_log.write_bytes(result.stderr)
 
         return {
             "version": PROTOCOL_VERSION,
+            "kind": "result",
             "id": request_id,
             "ok": True,
             "exit_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stdout_b64": encode_blob(result.stdout),
+            "stderr_b64": encode_blob(result.stderr),
             "stdout_log": str(stdout_log),
             "stderr_log": str(stderr_log),
         }
