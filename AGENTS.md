@@ -94,6 +94,13 @@ Treat `scripts/generate_skill.py` as a maintained template, not a convenience sc
 
 The generated `SKILL.md` is the repo's user-facing troubleshooting contract for brokered CLI behavior. In practice, that usually means agent users.
 
+Keep the generated skill narrowly scoped to troubleshooting and execution-model diagnosis.
+
+- Put deployment, installation, repository placement, directory renaming, and operator startup workflow in `README.md`.
+- Put one-shot session startup examples and operator launch instructions in broker lifecycle output.
+- Put only the user-facing diagnostic model in `SKILL.md`: how to recognize brokered execution, what behavior is preserved, what is unsupported, common failure classes, and how to debug them.
+- Do not turn the generated skill into a general setup guide for humans operating the repo.
+
 If behavior changes and the generated skill does not change with it, users following that skill will be taught the wrong model of the system.
 
 When you touch any of the following, inspect and usually update `render_skill_md()` in `scripts/generate_skill.py` in the same patch:
@@ -145,6 +152,7 @@ That command should fail when `SKILL.md` is absent or stale. That is expected be
 - Prefer small patches that preserve the existing narrow contract.
 - Read the tests before changing transport behavior.
 - Read `scripts/generate_skill.py` before changing anything that affects user troubleshooting guidance.
+- Keep deployment and operator workflow guidance out of the generated skill unless it directly changes the troubleshooting model a user needs once brokering is already in play.
 - Do not assume shell builtins, aliases, stdin, or interactivity are supported through the broker.
 - Do not describe brokered tools as if they run in the caller's shell process.
 - Do not commit a generated `SKILL.md` unless a human explicitly asks for that artifact.

@@ -320,6 +320,16 @@ When reporting findings, be explicit about the execution boundary. Prefer wordin
 - `tests/test_shim_cli.py` for concrete edge cases the current implementation intentionally handles
 """
 
+
+def render_current_skill_md() -> str:
+    allowlist = list(BROKER_CFG_V1.get("allowlist", []))
+    return render_skill_md(allowlist)
+
+
+def write_skill_md(output_path: Path = OUTPUT_PATH) -> Path:
+    output_path.write_text(render_current_skill_md(), encoding="utf-8")
+    return output_path
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate SKILL.md from broker config.")
     parser.add_argument(
@@ -335,8 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    allowlist = list(BROKER_CFG_V1.get("allowlist", []))
-    rendered = render_skill_md(allowlist)
+    rendered = render_current_skill_md()
 
     if args.check:
         existing = args.output.read_text(encoding="utf-8") if args.output.exists() else ""
@@ -352,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 0
 
-    args.output.write_text(rendered, encoding="utf-8")
+    write_skill_md(args.output)
     return 0
 
 

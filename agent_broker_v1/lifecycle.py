@@ -12,6 +12,8 @@ from pathlib import Path
 from agent_broker_v1.broker import Broker, ToolSpec
 from agent_broker_v1.config import BROKER_CFG_V1
 from agent_broker_v1.session import SessionPaths
+from scripts.generate_skill import OUTPUT_PATH as SKILL_OUTPUT_PATH
+from scripts.generate_skill import write_skill_md
 
 
 def create_session(base_dir: str | Path | None = None) -> SessionPaths:
@@ -88,14 +90,19 @@ def print_manual_instructions(
     allowed_tool_names: list[str],
 ) -> None:
     shim_cli_path = Path(repo_root).resolve() / "cli" / "shim_cli.py"
+    env_prefix = f"BROKER_SESSION_DIR={paths.session_dir} PATH={paths.shim_bin_dir}:$PATH"
     print(f"session_dir: {paths.session_dir}", flush=True)
+    print(f"generated skill: {SKILL_OUTPUT_PATH}", flush=True)
     print("allowlisted tools:", flush=True)
     print(f"  {', '.join(allowed_tool_names)}", flush=True)
     print("example shim command:", flush=True)
     print(
-        f"  BROKER_SESSION_DIR={paths.session_dir} PATH={paths.shim_bin_dir}:$PATH echo hello-from-shim",
+        f"  {env_prefix} echo hello-from-shim",
         flush=True,
     )
+    print("one-shot agent startup examples:", flush=True)
+    print(f"  {env_prefix} codex", flush=True)
+    print(f"  {env_prefix} claude-code", flush=True)
     print("example direct test command:", flush=True)
     print(
         f"  BROKER_SESSION_DIR={paths.session_dir} python3 {shim_cli_path} --tool echo -- hello-from-shim",
@@ -142,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = os.getcwd()
     paths = SessionPaths.from_dir(args.session_dir) if args.session_dir else create_session()
     ensure_session_layout(paths)
+    write_skill_md(SKILL_OUTPUT_PATH)
     allowed_tools = build_allowlist_from_config()
     ensure_session_shims(paths, sorted(allowed_tools))
     broker = Broker(

@@ -65,6 +65,17 @@ For the client side:
 - `BROKER_SESSION_DIR` identifies the session
 - symlink-based tool invocation also prepends `<session_dir>/bin` to `PATH`
 
+## Deployment Shape
+
+The intended deployment flow for agent users is:
+
+1. Clone this repo under the agent's local `skills/` directory.
+2. Rename the cloned directory to `agent-broker-user-diagnose`.
+3. Outside the LLM agent sandbox, run `python3 -m agent_broker_v1` or `python3 -m agent_broker_v2` from that repo directory. Broker startup regenerates the local `SKILL.md` and sets up the session directory.
+4. Start tools such as `codex` or `claude-code` by following the one-shot environment instruction printed by the broker, for example `BROKER_SESSION_DIR=... PATH=.../bin:$PATH codex`.
+
+The rename matters because broker-side failure hints refer agents to the `agent-broker-user-diagnose` skill name.
+
 ## Broker Behavior
 
 ### V1
@@ -78,10 +89,11 @@ python3 -m agent_broker_v1
 The broker:
 
 - creates a fresh session directory under `/tmp` by default
+- regenerates `SKILL.md` in the repo root at startup
 - prints the session directory path
 - prints the effective runtime allowlist resolved from central config
 - creates shim symlinks under `bin/` for the allowlisted tools
-- prints example client-side commands that use one-shot environment assignments
+- prints example client-side commands that use one-shot environment assignments, including agent startup examples such as `codex` and `claude-code`
 - serves until interrupted
 - removes `req.fifo`, `resp.fifo`, `client.lock`, generated shim symlinks, and `bin/` on exit
 - leaves `logs/` in place
@@ -105,8 +117,10 @@ python3 -m agent_broker_v2
 The v2 broker:
 
 - creates a fresh session directory under `/tmp` by default
+- regenerates `SKILL.md` in the repo root at startup
 - prints the session directory path and effective allowlist
 - creates v2 shim symlinks under `bin/`
+- prints one-shot environment instructions you can reuse to start agent tools such as `codex` and `claude-code`
 - keeps the same FIFO-plus-lock session model as v1
 - spawns one child process per active request and forwards `stdin` incrementally
 - streams `stdout` and `stderr` back to the shim as data arrives
@@ -191,7 +205,7 @@ python3 /path/to/repo/cli/shim_cli_v2.py --tool echo -- hello-from-shim
 
 ## Generating the Agent Skill
 
-This repo does not commit `SKILL.md`. Instead, a human can generate a local diagnostic skill and hand it to LLM agent users when they need help understanding that some apparent CLI tools are actually brokered.
+This repo does not commit `SKILL.md`. Instead, the normal deployment flow is to clone the repo into the agent's `skills/` directory as `agent-broker-user-diagnose`, then start `agent_broker_v1` or `agent_broker_v2` outside the sandbox so broker startup regenerates the local diagnostic skill and sets up the session.
 
 Generate the skill from the current broker config:
 
@@ -199,13 +213,15 @@ Generate the skill from the current broker config:
 python3 scripts/generate_skill.py
 ```
 
-That writes a local `SKILL.md` in the repo root using the current v1 allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. The generated skill also points users at the v2 config and behavior differences when they are debugging the streamed path. Regenerate it after changing either version's broker config or user-facing execution model.
+That writes a local `SKILL.md` in the repo root using the current v1 allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. The generated skill also points users at the v2 config and behavior differences when they are debugging the streamed path. Broker startup now runs this generation step automatically as part of the intended deployment flow, but the script remains available for manual regeneration and `--check` workflows.
 
 The intended flow is:
 
-- the human running this repo generates `SKILL.md`
-- the human gives that generated skill to LLM agent users
-- the agent uses that skill when brokered CLI behavior needs diagnosis
+- the human clones this repo under `skills/agent-broker-user-diagnose`
+- the human starts `python3 -m agent_broker_v1` or `python3 -m agent_broker_v2` outside the LLM sandbox
+- broker startup regenerates `SKILL.md` and prints the one-shot environment assignment for the session
+- the human starts `codex`, `claude-code`, or another agent with that one-shot environment assignment
+- the agent uses the generated skill when brokered CLI behavior needs diagnosis
 
 ## Repo Layout
 
