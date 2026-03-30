@@ -14,13 +14,20 @@ The items below describe the sandbox behavior observed while developing this pro
 
 ## Architecture
 
-The v1 design is intentionally narrow:
+The repository currently carries two broker variants:
+
+- `agent_broker_v1`
+  One-shot request/result transport with whole-process stdout/stderr capture.
+- `agent_broker_v2`
+  Streamed request lifetime transport with incremental stdin, stdout, stderr, signal forwarding, and heartbeats.
+
+Both variants keep the same intentionally narrow operating model:
 
 - one broker instance serves one client session
 - one session directory contains one FIFO pair, one lock file, and one generated shim-bin directory
 - one request/response transaction is in flight per session
 - the sandboxed shim holds a blocking `flock` across the full request/response exchange
-- the current command path is intended for non-interactive commands
+- the command path is still not a transparent shell replacement
 
 ### Components
 
@@ -36,6 +43,12 @@ The v1 design is intentionally narrow:
   Sandbox-side shim library for request/response transport over the FIFO pair.
 - `cli/shim_cli.py`
   Sandbox-side tool wrapper that infers the requested tool from its symlink name.
+- `agent_broker_v2.broker`
+  Host-side streamed broker. Spawns a child process, forwards stdin and signals, streams stdout and stderr, and emits a terminal stop frame.
+- `agent_broker_v2.shim`
+  Sandbox-side streamed shim library for the v2 protocol.
+- `cli/shim_cli_v2.py`
+  Sandbox-side v2 tool wrapper that streams stdio incrementally.
 
 ## Session Layout
 
@@ -53,6 +66,8 @@ For the client side:
 - symlink-based tool invocation also prepends `<session_dir>/bin` to `PATH`
 
 ## Broker Behavior
+
+### V1
 
 Run the broker from the repository root:
 
@@ -79,7 +94,40 @@ python3 -m agent_broker_v1 --session-dir /tmp/agent-broker-v1-...
 
 When `--session-dir` is used, lifecycle recreates any missing session IPC files in that directory and then regenerates the allowed-tool shims under `bin/`.
 
+### V2
+
+Run the streamed broker from the repository root:
+
+```bash
+python3 -m agent_broker_v2
+```
+
+The v2 broker:
+
+- creates a fresh session directory under `/tmp` by default
+- prints the session directory path and effective allowlist
+- creates v2 shim symlinks under `bin/`
+- keeps the same FIFO-plus-lock session model as v1
+- spawns one child process per active request and forwards `stdin` incrementally
+- streams `stdout` and `stderr` back to the shim as data arrives
+- forwards client-originated signals to the child process
+- emits heartbeats during otherwise silent periods
+- removes `req.fifo`, `resp.fifo`, `client.lock`, generated shim symlinks, and `bin/` on exit
+- leaves `logs/` in place
+
+V2 protocol notes:
+
+- request and response frames are still newline-delimited base64-encoded JSON
+- client frames use `start`, `data`, and `heartbeat`
+- broker frames use `data`, `stopped`, and `heartbeat`
+- `data` is keyed by `channel`
+- client timeout remains shim policy above the wire
+- the v2 CLI defaults to no client timeout unless `--timeout-ms` is set
+- `stopped` reports observed process termination, not merely requested broker intent
+
 ## Shim CLI
+
+### V1
 
 The main client-side entrypoint is [cli/shim_cli.py](cli/shim_cli.py).
 
@@ -121,6 +169,26 @@ The current implementation is intended for non-interactive commands. It does not
 
 If `BROKER_SESSION_DIR` is unset, or the broker has already removed the session files, the shim exits cleanly with a broker-unavailable style error instead of crashing.
 
+### V2
+
+The v2 client-side entrypoint is [cli/shim_cli_v2.py](cli/shim_cli_v2.py).
+
+Normal usage is the same symlink-based pattern, but the transport semantics are different:
+
+- `stdin` can be streamed to the child process
+- `stdout` and `stderr` are forwarded incrementally as broker `data` frames arrive
+- forwarded signals are sent as `data(channel="signal")`
+- the shim defaults to no client timeout and may escalate from `SIGTERM` to `SIGKILL` only when `--timeout-ms` is set
+- `heartbeat` frames keep long-lived silent requests alive
+- the terminal broker reply is one `stopped` frame, not a v1 `result`
+
+Direct debug usage mirrors v1 with the v2 entrypoint:
+
+```bash
+BROKER_SESSION_DIR=/tmp/agent-broker-v2-... \
+python3 /path/to/repo/cli/shim_cli_v2.py --tool echo -- hello-from-shim
+```
+
 ## Generating the Agent Skill
 
 This repo does not commit `SKILL.md`. Instead, a human can generate a local diagnostic skill and hand it to LLM agent users when they need help understanding that some apparent CLI tools are actually brokered.
@@ -131,7 +199,7 @@ Generate the skill from the current broker config:
 python3 scripts/generate_skill.py
 ```
 
-That writes a local `SKILL.md` in the repo root using the current allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. Because the generated skill is derived from config, regenerate it after changing either file.
+That writes a local `SKILL.md` in the repo root using the current v1 allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. The generated skill also points users at the v2 config and behavior differences when they are debugging the streamed path. Regenerate it after changing either version's broker config or user-facing execution model.
 
 The intended flow is:
 
@@ -143,8 +211,12 @@ The intended flow is:
 
 - `agent_broker_v1/`
   Package code for broker, lifecycle, central config, protocol, session handling, and shim library.
+- `agent_broker_v2/`
+  Package code for the streamed broker variant.
 - `cli/`
   User-facing CLI entrypoints.
+- `docs/`
+  V2 design notes and protocol documentation.
 - `experiments/`
   Transport and sandbox experiments kept for reference.
 - `scripts/`

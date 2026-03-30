@@ -5,3 +5,4 @@ __pycache__/
 tmp/
 SKILL.md
 agent_broker_v1/config_local.py
+agent_broker_v2/config_local.py

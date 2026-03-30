@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from agent_broker_v1.config import BROKER_CFG_V1
+from agent_broker_v2.config import BROKER_CFG_V2
 
 
 SKILL_NAME = "agent-broker-user-diagnose"
@@ -38,6 +39,21 @@ def render_allowlist(allowlist: list[str]) -> str:
     )
 
 
+def render_v2_allowlist(allowlist: list[str]) -> str:
+    if not allowlist:
+        return (
+            "The current configured v2 allowlist is empty. If a streamed tool path appears "
+            "to work, it is coming from outside the repo's v2 broker path."
+        )
+
+    quoted = ", ".join(f"`{tool}`" for tool in allowlist)
+    return (
+        "If you are debugging the streamed v2 path, inspect "
+        "`agent_broker_v2/config.py` or `agent_broker_v2/config_local.py`. "
+        f"The current configured v2 allowlist is: {quoted}."
+    )
+
+
 def render_example_tools(allowlist: list[str]) -> str:
     examples = [tool for tool in allowlist if tool in {"echo", "pwd", "sleep"}]
     if not examples:
@@ -50,6 +66,7 @@ def render_example_tools(allowlist: list[str]) -> str:
 
 def render_skill_md(allowlist: list[str]) -> str:
     allowlist_text = render_allowlist(allowlist)
+    allowlist_v2_text = render_v2_allowlist(BROKER_CFG_V2["allowlist"])
     example_tools_text = render_example_tools(allowlist)
     return f"""---
 name: {SKILL_NAME}
@@ -62,7 +79,12 @@ description: {SKILL_DESCRIPTION}
 
 Use this skill when you expected ordinary local CLI behavior but have signs that command execution is being brokered.
 
-The core mental model: this repo can make some tools look locally available even though they cross a broker boundary. The shim preserves `argv`, `cwd`, stdout, stderr, and exit code, but it is not a full local-process replacement. The command actually runs in a separate broker process, under a fixed allowlist, with captured output, no stdin transport, and no interactive terminal semantics.
+The core mental model: this repo can make some tools look locally available even though they cross a broker boundary. The command actually runs in a separate broker process under a fixed allowlist. It is not a full local-process replacement.
+
+Version matters:
+
+- v1 preserves `argv`, `cwd`, stdout, stderr, and exit code, but captures stdout and stderr as a one-shot terminal result, does not transport stdin, and does not preserve interactive terminal semantics.
+- v2 preserves `argv`, `cwd`, and exit status, streams stdin/stdout/stderr incrementally, forwards signals through the broker, and uses heartbeats for long-lived silent requests. It still does not promise PTY-like interactivity or local shell semantics.
 
 ## When to use this skill
 
@@ -71,6 +93,8 @@ Use it when a tool message or repo instruction explicitly points you here.
 ## First sanity check: is the tool even allowlisted?
 
 {allowlist_text}
+
+{allowlist_v2_text}
 
 Before investigating session state, transport, or interactivity, compare the exact requested tool name against that list.
 
@@ -111,10 +135,12 @@ These parts are intentionally forwarded:
 - raw stdout bytes
 - raw stderr bytes
 - exit code
+- in v2, signal forwarding and incremental stdio transport
 
 These parts do not behave like a normal local shell execution:
 
-- stdin is not transported
+- stdin is not transported in v1
+- v2 transports stdin, but still does not become a PTY
 - interactive signal behavior is not preserved
 - shell aliases, functions, and shell builtins are not forwarded
 - only allowlisted executable names are available
@@ -142,6 +168,8 @@ Check these in order:
 
 5. Reproduce with direct shim invocation to remove PATH and symlink ambiguity.
    `BROKER_SESSION_DIR=... python3 cli/shim_cli.py --tool <tool> -- <args>`
+   For v2, use:
+   `BROKER_SESSION_DIR=... python3 cli/shim_cli_v2.py --tool <tool> -- <args>`
 
 6. Inspect broker log artifacts for the matching request under `"$BROKER_SESSION_DIR/logs"`.
 
@@ -157,6 +185,7 @@ Likely causes:
 - the broker already shut down and cleaned up IPC files
 - `req.fifo`, `resp.fifo`, or `client.lock` is missing
 - the broker closed the response FIFO before replying
+- the v2 broker heartbeat lease expired
 
 What to do:
 
@@ -209,6 +238,8 @@ What to do:
   `python3 cli/shim_cli.py --tool <tool> --timeout-ms 120000 -- <args>`
 - if the tool expects stdin, redesign the invocation to use files or explicit arguments instead
 
+For v2, timeout policy is client-side and the direct CLI defaults to no timeout. If a timeout is explicitly enabled, a timed-out shim may send one or more forwarded signals and then report the observed terminal result from the child.
+
 ### `BAD_RESPONSE`, `BAD_JSON`, or exit code `70`
 
 This strongly suggests a broker transport or protocol problem, not a problem in the target tool itself.
@@ -236,6 +267,8 @@ These are not bugs by themselves:
 - stale responses with a different request id are ignored by the shim
 - stale error frames with `id: null` are ignored by the shim while waiting for the active request
 - the shim serializes client requests with a blocking `flock` on `client.lock`
+- in v2, stdout and stderr may appear incrementally before the child exits
+- in v2, forwarded signals describe broker intent, but terminal stop status reflects the observed child outcome
 
 If output looks stale, check whether you are reading old log files rather than the current request result.
 
