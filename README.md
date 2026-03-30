@@ -205,7 +205,7 @@ python3 /path/to/repo/cli/shim_cli_v2.py --tool echo -- hello-from-shim
 
 ## Generating the Agent Skill
 
-This repo does not commit `SKILL.md`. Instead, the normal deployment flow is to clone the repo into the agent's `skills/` directory as `agent-broker-user-diagnose`, then start `agent_broker_v1` or `agent_broker_v2` outside the sandbox so broker startup regenerates the local diagnostic skill and sets up the session.
+This repo does not commit `SKILL.md`. In the intended deployment flow, you place the checkout at `skills/agent-broker-user-diagnose` and start `python3 -m agent_broker_v1` or `python3 -m agent_broker_v2` outside the sandbox. Broker startup regenerates the local skill automatically.
 
 Generate the skill from the current broker config:
 
@@ -213,15 +213,15 @@ Generate the skill from the current broker config:
 python3 scripts/generate_skill.py
 ```
 
-That writes a local `SKILL.md` in the repo root using the current v1 allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. The generated skill also points users at the v2 config and behavior differences when they are debugging the streamed path. Broker startup now runs this generation step automatically as part of the intended deployment flow, but the script remains available for manual regeneration and `--check` workflows.
+That writes a local `SKILL.md` in the repo root using the current v1 allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. The generated skill also points users at the v2 config and behavior differences when they are debugging the streamed path.
+
+Use the script directly only when you want manual regeneration or a `--check` workflow. Normal operation should rely on broker startup.
 
 The intended flow is:
 
-- the human clones this repo under `skills/agent-broker-user-diagnose`
-- the human starts `python3 -m agent_broker_v1` or `python3 -m agent_broker_v2` outside the LLM sandbox
-- broker startup regenerates `SKILL.md` and prints the one-shot environment assignment for the session
-- the human starts `codex`, `claude-code`, or another agent with that one-shot environment assignment
-- the agent uses the generated skill when brokered CLI behavior needs diagnosis
+1. Clone this repo under `skills/` and rename the checkout to `agent-broker-user-diagnose`.
+2. Start `python3 -m agent_broker_v1` or `python3 -m agent_broker_v2` outside the LLM sandbox.
+3. Use the one-shot environment assignment printed by the broker to start `codex`, `claude-code`, or another agent.
 
 ## Repo Layout
 

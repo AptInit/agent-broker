@@ -23,6 +23,10 @@ class GenerateSkillTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             rendered = output_path.read_text(encoding="utf-8")
             self.assertIn(
+                "description: Use when messages from `echo`, `pwd`, `sleep` explicitly refer you to `agent-broker-user-diagnose` or `SKILL.md` for brokered CLI troubleshooting.",
+                rendered,
+            )
+            self.assertIn(
                 "## First sanity check: is the tool even allowlisted?",
                 rendered,
             )
