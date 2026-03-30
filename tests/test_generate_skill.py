@@ -27,7 +27,11 @@ class GenerateSkillTests(unittest.TestCase):
                 rendered,
             )
             self.assertIn(
-                "The current configured allowlist from `agent_broker_v1/config.py` is: `echo`, `pwd`, `sleep`.",
+                "The current configured allowlist from `agent_broker_v1/config.py` or `agent_broker_v1/config_local.py` is: `echo`, `pwd`, `sleep`.",
+                rendered,
+            )
+            self.assertIn(
+                "The current repo config is in `agent_broker_v1/config.py`, unless `agent_broker_v1/config_local.py` is present.",
                 rendered,
             )
             self.assertIn(

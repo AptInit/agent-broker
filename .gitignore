@@ -4,3 +4,4 @@ __pycache__/
 *.log
 tmp/
 SKILL.md
+agent_broker_v1/config_local.py

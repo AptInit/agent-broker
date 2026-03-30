@@ -29,7 +29,7 @@ The v1 design is intentionally narrow:
 - `agent_broker_v1.lifecycle`
   Host-side bootstrap, allowlist, and cleanup layer. Creates or reuses the session directory, builds the runtime allowlist from config, creates shim symlinks for the allowed tools, prints manual bootstrap directions, handles shutdown, and removes session IPC files on exit.
 - `agent_broker_v1.config`
-  Centralized broker configuration. Currently holds `BROKER_CFG_V1`, including the configured tool allowlist.
+  Centralized broker configuration. `config.py` provides defaults, and an optional uncommitted `config_local.py` can replace `BROKER_CFG_V1` with higher priority.
 - `agent_broker_v1.session`
   Session path model shared by broker and shim.
 - `agent_broker_v1.shim`
@@ -131,7 +131,7 @@ Generate the skill from the current broker config:
 python3 scripts/generate_skill.py
 ```
 
-That writes a local `SKILL.md` in the repo root using the current allowlist from `agent_broker_v1/config.py`. Because the generated skill is derived from config, regenerate it after changing the allowlist.
+That writes a local `SKILL.md` in the repo root using the current allowlist from `agent_broker_v1/config.py`, or from `agent_broker_v1/config_local.py` when that local override file is present. Because the generated skill is derived from config, regenerate it after changing either file.
 
 The intended flow is:
 

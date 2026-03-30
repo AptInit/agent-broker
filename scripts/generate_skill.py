@@ -32,7 +32,8 @@ def render_allowlist(allowlist: list[str]) -> str:
 
     quoted = ", ".join(f"`{tool}`" for tool in allowlist)
     return (
-        f"The current configured allowlist from `agent_broker_v1/config.py` is: "
+        "The current configured allowlist from "
+        "`agent_broker_v1/config.py` or `agent_broker_v1/config_local.py` is: "
         f"{quoted}."
     )
 
@@ -137,7 +138,7 @@ Check these in order:
    `command -v <tool>`
 
 4. Confirm the tool name is allowlisted by the broker.
-   The current repo config is in `agent_broker_v1/config.py`.
+   The current repo config is in `agent_broker_v1/config.py`, unless `agent_broker_v1/config_local.py` is present.
 
 5. Reproduce with direct shim invocation to remove PATH and symlink ambiguity.
    `BROKER_SESSION_DIR=... python3 cli/shim_cli.py --tool <tool> -- <args>`
@@ -179,7 +180,7 @@ Common causes:
 
 What to do:
 
-- inspect `agent_broker_v1/config.py`
+- inspect `agent_broker_v1/config.py` and `agent_broker_v1/config_local.py`
 - confirm the exact invoked filename with `command -v <tool>`
 - if testing `cli/shim_cli.py` directly, always pass `--tool`
 
@@ -282,7 +283,7 @@ When reporting findings, be explicit about the execution boundary. Prefer wordin
 - `cli/shim_cli.py` for direct debug entrypoint behavior
 - `agent_broker_v1/shim.py` for client-side transport and response filtering
 - `agent_broker_v1/broker.py` for allowlist enforcement, subprocess execution, timeout handling, and per-request logs
-- `agent_broker_v1/config.py` for the configured allowlist
+- `agent_broker_v1/config.py` and optional `agent_broker_v1/config_local.py` for the configured allowlist
 - `tests/test_shim_cli.py` for concrete edge cases the current implementation intentionally handles
 """
 
